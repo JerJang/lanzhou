@@ -38,16 +38,16 @@
 struct sDataBuf
 {
     unsigned int* p_data;
-    unsigned short m_size;
-    item* p_next;
+    unsigned short m_size;	// Size of buffer in fect (int)
+    sDataBuf* p_next;
 };
 
 struct cirQueue
 {
     sDataBuf buf[ _BUF_NUM ];
     int mNumb;			// The number of full buffer
-    unsigned int* p_put;	// Pointer to put next buffer
-    unsigned int* p_get;	// Pointer to get next buffer
+    sDataBuf* p_put;		// Pointer to put next buffer
+    sDataBuf* p_get;		// Pointer to get next buffer
 
 };
 
@@ -59,7 +59,7 @@ struct cirQueue
 
 ofstream logFile;
 unsigned int EC;		// Event Counter
-unsigned int FileSize;		// The Size of the file
+unsigned int _FileSize;		// The Size of the file
 cirQueue* pQue;			// Pointer to Data buffer
 
 
@@ -135,8 +135,8 @@ int main(int argc, char *argv[])
     pQue->buf[ _BUF_NUM-1 ].p_next = & ( pQue->buf[0].p_data );
 
     pQue -> mNumb = 0;			// Empty queue
-    pQue -> p_put = pQue -> buf[0].p_data;
-    pQue -> p_get = pQue -> buf[0].p_data;
+    pQue -> p_put = pQue -> buf[0];
+    pQue -> p_get = pQue -> buf[0];
 
 
 
@@ -220,7 +220,7 @@ int fileDecode( string fileName )
     // Prepare the Event Counter and the File Size ========== 
     EC = 0;				// Event Counter
     file.seekg( 0 , ios::end );		// Seek to the end
-    FileSize = file.tellg();		// The Size of the file
+    _FileSize = file.tellg();		// The Size of the file
     file.seekg( ios::beg );		// Seek back
     
 
@@ -262,28 +262,102 @@ int fileDecode( string fileName )
 
 /***************************************************
 # Abstract:	
-# Input:	ifstream* file
+# Input:	ifstream* pFile
 	Pointer to the position of the data file will be read
-# Output:	unsigned int x
-	Indicates how much data loaded in fect
+# Output:	bool 
+	Indicates whether current file is end
+	TRUE for end
 ****************************************************/
-unsigned int LoadBuf( ifstream file)
+bool LoadBuf( ifstream* pFile)
 {
     assert( (pQue->mNumb)>=0 && (pQue->mNumb)<=_BUF_NUM );
 
-    // Wait for empty 
+    // Wait for empty buffer ========== 
     while ( pQue->mNumb = _BUF_NUM ) 
     {
 	// Just wait here if the buffer is full
     } 
 
-    file.read( (char*) pQue->p_put , _BUF_SIZE );
+
+    // Load buffer to Memory ========== 
+    unsigned int fileRemain;	// Get how much data remain
+    fileRemain = _FileSize - pFile->tellg() ;
+
+    // Switch for different case of "File Remain"
+    if( 0 == fileRemain )
+    {
+	// --- Case 1 --------------------------------------
+	// When the file is just end 
+	return true;
+    }
+    else if( fileRemain < _BUF_SIZE )
+    {
+	// --- Case 2 --------------------------------------
+	// When the file remaining is NOT enough for a hole buffer
+	// which is sized by Mocra _BUF_SIZE
+	pFile.read( (char*)(pQue->p_put->p_data) , fileRemain );
 
 
+	// Load buffer size in fect ==========
+	pQue->p_put->m_size = ( fileRemain / sizeof(int) );
 
 
+	// Change the pointer to the next buffer ==========
+	pQue->p_put = pQue->p_put->p_next;
+
+
+	// Change the number of full empty ==========
+	++ ( pQue->p_put->mNumb );
+
+	return true;
+
+    }
+    else
+    {
+	// --- Case 3 ---------------------------------------
+	// When there is still enough room for a hole buffer
+
+	pFile.read( (char*)(pQue->p_put->p_data) , _BUF_SIZE );
+
+
+	// Check the last _Event_Separator ========== 
+	int i;
+	for ( i = _BUF_SIZE -1; i > 0; i--) 
+	{
+	    if( _Event_Separator == pQue->p_put->p_data[i] )
+	    {
+		break;
+	    }
+	} /* i */
+
+	// Load buffer size in fect ==========
+	pQue->p_put->m_size = i + 1;
+
+
+	// Change the pointer to the next buffer ==========
+	pQue->p_put = pQue->p_put->p_next;
+
+
+	// Change the number of full empty ==========
+	++ ( pQue->p_put->mNumb );
+
+
+	// Change the file position ==========
+	pFile->seekg( -( (_BUF_SIZE-1-i)*sizeof(int) ) ,ios::end );
+
+	return false;
+    }
 
 }
+
+
+
+
+
+
+
+
+
 
 
 
