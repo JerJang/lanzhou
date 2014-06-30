@@ -18,13 +18,18 @@
 #include <string>
 
 #include <pthread.h>
+#include <unistd.h>
+
+#include <assert.h>
+#include "algorithm"
 
 using namespace std;
 
 
+
 #define _Event_Separator	0xFFFFFFFF
 #define _Crate_Header		0xFFFF0000
-#defile _Crate_Num		1
+#define _Crate_Num		1
 
 
 #define _GeoMask		0xf8000000
@@ -59,7 +64,8 @@ using namespace std;
 #define _ChlR830		27
 
 
-#define _DataMark830		0x03ffffff
+#define _ChlNumMask		0x00003f00
+#define _ChlNumR		8
 
 
 #define _ChlMask32		0x001f0000
@@ -71,7 +77,7 @@ using namespace std;
 
 
 #define _DataMask		0x00000fff
-
+#define _DataMask830		0x03ffffff
 
 
 #define _isUnderThresMask	0x00001000
@@ -89,6 +95,7 @@ using namespace std;
 #define _BUF_NUM	2		// buffer number
 
 
+typedef unsigned int		uint;
 
 struct sEventDataRegister
 {
@@ -118,7 +125,6 @@ struct sEventDataRegister
 };
 
 typedef sEventDataRegister	sEData;
-typedef unsigned int		uint;
 
 
 struct sDataBuf
@@ -152,9 +158,20 @@ bool isFileEnd;			// Indicate if current file end
 // Scan current directory for data files  
 int scanDir( vector<string>* );
 
+int Decode( string fileName );
+
+bool LoadBuf( ifstream* pFile);
+
+void* DecodeBuf( void* );
+
+bool EventDecode( uint* buf, short size);
 
 
-
+uint* Decode_v830ac( uint* iter,short chlNum, int* reg);
+uint* Decode_v792( uint* iter,short chlNum, short* reg);
+uint* Decode_v785n( uint* iter,short chlNum, short* reg);
+uint* Decode_v785( uint* iter,short chlNum, short* reg);
+uint* Decode_v775n( uint* iter,short chlNum, short* reg);
 
 
 
@@ -171,7 +188,7 @@ int main(int argc, char *argv[])
     {
 	cout << endl
 	     << "Fail in creating log file. Exit." << endl;
-	exit( 0 );
+	_exit( 0 );
     }
     cout << "Done." << endl;
     logFile << "Log file start tracking." << endl;
@@ -183,12 +200,12 @@ int main(int argc, char *argv[])
     if( _MAX_FILE_NUM <= fileNum )
     {
 	cout << "Too Much Files Found." << endl;
-	exit( 0 );
+	_exit( 0 );
     }
     else if( 0 == fileNum )
     {
 	cout << "No data file found." << endl;
-	exit( 0 );
+	_exit( 0 );
     }
 
 
@@ -209,19 +226,19 @@ int main(int argc, char *argv[])
     // Prepare data buffer ==========
     for (int i = 0; i < _BUF_NUM ; i++)
     {
-	pQue -> buf[i].p_data = new int[ _BUF_SIZE ];
+	pQue -> buf[i].p_data = new uint[ _BUF_SIZE ];
 	pQue -> buf[i].m_size = 0;
     } /* i */
     
     for (int i = 0; i < _BUF_NUM-1 ; i++) 
     {
-	pQue->buf[i].p_next = & ( pQue->buf[i+1].p_data );
+	pQue->buf[i].p_next = & ( pQue->buf[i+1] );
     } /* i */
-    pQue->buf[ _BUF_NUM-1 ].p_next = & ( pQue->buf[0].p_data );
+    pQue->buf[ _BUF_NUM-1 ].p_next = & ( pQue->buf[0] );
 
     pQue -> mNumb = 0;			// Empty queue
-    pQue -> p_put = pQue -> buf[0];
-    pQue -> p_get = pQue -> buf[0];
+    pQue -> p_put = &( pQue -> buf[0] );
+    pQue -> p_get = &( pQue -> buf[0] );
 
 
     // Open file for Decoding ==========
@@ -300,10 +317,10 @@ int Decode( string fileName )
 
     // Get file header and the comments ==========
     char comment[1024];
-    datafile.get( comment , 1024 );
+    file.get( comment , 1024 );
     logFile << ">> File comments: " << comment  << endl;
 
-    datafile.seekg(1024 ,ios::beg);	// Skip the header 
+    file.seekg(1024 ,ios::beg);	// Skip the header 
     
 
     // Check the first Event Separator ==========
@@ -322,7 +339,7 @@ int Decode( string fileName )
     if( ret!=0 )
     {
 	printf ("Create pthread error!\n");
-	exit (1);
+	_exit (1);
     }
 
 
@@ -392,7 +409,7 @@ bool LoadBuf( ifstream* pFile)
 
 
 	// Change the number of full empty ==========
-	++ ( pQue->p_put->mNumb );
+	++ ( pQue->mNumb );
 
 	return true;
 
@@ -430,7 +447,7 @@ bool LoadBuf( ifstream* pFile)
 
 
 	// Change the number of full empty ==========
-	++ ( pQue->p_put->mNumb );
+	++ ( pQue->mNumb );
 
 	return false;
     }
@@ -443,7 +460,7 @@ bool LoadBuf( ifstream* pFile)
 # Input:	
 # Output:	
 ****************************************************/
-void* DecodeBuf()
+void* DecodeBuf( void* )
 {
     assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
 
@@ -475,7 +492,7 @@ void* DecodeBuf()
 	    if( false == b_Decode )
 	    {
 		logFile << ">> Event load fail. " << endl;
-		return ;
+		return NULL;
 	    }
 
 	    iter += size;	// Put 'iter' to next event
@@ -491,9 +508,9 @@ void* DecodeBuf()
 
 
     // Change the number of full empty ==========
-    -- ( pQue->p_get->mNumb );
+    -- ( pQue->mNumb );
 
-    return ;
+    return NULL;
 }
 
 
@@ -642,17 +659,17 @@ bool EventDecode( uint* buf, short size)
 
 	  case 5 : 
 	    iter = 
-	      Decode_v785n( iter, chlNum, ( dataReg.v775n_5) );
+	      Decode_v775n( iter, chlNum, ( dataReg.v775n_5) );
 	    break;
 
 	  case 7 : 
 	    iter = 
-	      Decode_v785n( iter, chlNum, ( dataReg.v775n_7) );
+	      Decode_v775n( iter, chlNum, ( dataReg.v775n_7) );
 	    break;
 
 	  case 8 : 
 	    iter = 
-	      Decode_v785n( iter, chlNum, ( dataReg.v775n_8) );
+	      Decode_v775n( iter, chlNum, ( dataReg.v775n_8) );
 	    break;
 
 	  case 10 : 
@@ -704,9 +721,7 @@ bool EventDecode( uint* buf, short size)
 
 
 // Decode v830ac ==========
-uint* Decode_v830ac( uint* iter,
-		     short chlNum, 
-		     int* reg)
+uint* Decode_v830ac( uint* iter,short chlNum, int* reg)
 {
     short chl;
     int tempdata;
@@ -728,9 +743,7 @@ uint* Decode_v830ac( uint* iter,
 
 
 // Decode v792 ==========
-uint* Decode_v792( uint* iter,
-		   short chlNum, 
-		   int* reg)
+uint* Decode_v792( uint* iter,short chlNum, short* reg)
 {
     short chl;
     int tempdata;
@@ -764,9 +777,7 @@ uint* Decode_v792( uint* iter,
 
 
 // Decode v785n ==========
-uint* Decode_v785n( uint* iter,
-		    short chlNum, 
-		    int* reg)
+uint* Decode_v785n( uint* iter,short chlNum, short* reg)
 {
     short chl;
     int tempdata;
@@ -800,9 +811,7 @@ uint* Decode_v785n( uint* iter,
 
 
 // Decode v785 ==========
-uint* Decode_v785( uint* iter,
-		   short chlNum, 
-		   int* reg)
+uint* Decode_v785( uint* iter,short chlNum, short* reg)
 {
     short chl;
     int tempdata;
@@ -835,9 +844,7 @@ uint* Decode_v785( uint* iter,
 
 
 // Decode v775n ==========
-uint* Decode_v775n( uint* iter,
-		    short chlNum, 
-		    int* reg)
+uint* Decode_v775n( uint* iter,short chlNum, short* reg)
 {
     short chl;
     int tempdata;
