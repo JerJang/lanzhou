@@ -19,7 +19,7 @@
 
 #include <pthread.h>
 
-  using namespace std;
+using namespace std;
 
 
 #define _Event_Separator	0xFFFFFFFF
@@ -82,8 +82,6 @@
 
 // ---------------------------------------------------
 
-
-
 #define	_DATA_DIRE	"./source/"	// Dir of the data files 
 #define _LOG_FILE	"log"		// The log file
 #define _MAX_FILE_NUM	10e7		// Max of data files 
@@ -94,7 +92,7 @@
 
 struct sEventDataRegister
 {
-    unsigned int EventCounter;
+    uint EventCounter;
     // Event Counter from the data file, it's different from
     // the global flag 'EC' who indicates the real number of
     // the events, it's discrete.
@@ -119,12 +117,13 @@ struct sEventDataRegister
 
 };
 
-typedef sEventDataRegister sEData;
+typedef sEventDataRegister	sEData;
+typedef unsigned int		uint;
 
 
 struct sDataBuf
 {
-    unsigned int* p_data;
+    uint* p_data;
     unsigned short m_size;	// Size of buffer in fect (int)
     sDataBuf* p_next;
 };
@@ -139,18 +138,24 @@ struct cirQueue
 };
 
 
-
 ofstream logFile;
-unsigned int EC;		// Event Counter
-unsigned int _FileSize;		// The Size of the file
+uint EC;			// Event Counter
+uint _FileSize;			// The Size of the file
 cirQueue* pQue;			// Pointer to Data buffer
 sEData dataReg;			// Data Register
 
-
+pthread_t t_load;		// Thread for loading buffer
+pthread_t t_decode;		// Thread for decoding buffer
+bool isFileEnd;			// Indicate if current file end
 
 
 // Scan current directory for data files  
 int scanDir( vector<string>* );
+
+
+
+
+
 
 
 
@@ -189,17 +194,16 @@ int main(int argc, char *argv[])
 
     // List all files found to Screan ==========
     /*
-    for (int i = 0; i < file_names.size() ; i++) 
-    {
-	cout << file_names.at(i) << '\t';
-    }
+      for (int i = 0; i < file_names.size() ; i++) 
+      {
+      cout << file_names.at(i) << '\t';
+      }
     */
 
     logFile << fileNum << " files found." << endl;
     cout << fileNum << " files found."
 	 << "Press Enter to Confirm. " << endl;
     getchar();
-
 
 
     // Prepare data buffer ==========
@@ -220,8 +224,6 @@ int main(int argc, char *argv[])
     pQue -> p_get = pQue -> buf[0];
 
 
-
-
     // Open file for Decoding ==========
     for (int i = 0; i < file_names.size() ; i++)
     {
@@ -232,6 +234,10 @@ int main(int argc, char *argv[])
 	     << file_names[i] << endl;
 
 	// Decode current fule -----
+	isFileEnd = false;
+	// ///////////////////////////////////////////
+	// Centre Function Call //////////////////////
+	// ///////////////////////////////////////////
 	int temp = Decode( file_names.at(i) );
 
 	cout << temp << "Events decoded in the file." << endl;
@@ -239,19 +245,6 @@ int main(int argc, char *argv[])
 		<< " Events got in this file." << endl;
 
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -276,7 +269,7 @@ int main(int argc, char *argv[])
 	Data File Name
 # Output:	(int) x
 	>0	x Events loaded, Succeed in loading the hole file
-	0	Fail in decoding the file, NO Events Loaded
+	=0	Fail in decoding the file, NO Events Loaded
 	<0	(-x) Events loaded, BUT interrupted inside the file
 
 	    The reason who caused the interruption will be record
@@ -284,7 +277,6 @@ int main(int argc, char *argv[])
 ****************************************************/
 int Decode( string fileName )
 {
-
     // Open the data file ==========
     logFile << ">> Opening data file." << endl;
     string FileStr = "source//" + fileName;
@@ -315,30 +307,40 @@ int Decode( string fileName )
     
 
     // Check the first Event Separator ==========
-    unsigned int temp;
-    file.read( (char*) (&temp) , sizeof(temp))
+    uint temp;
+    file.read( (char*) (&temp) , sizeof(temp));
     if( _Event_Separator != temp )
     {
 	logFile << ">> (E) First event separator missing. "<< endl;
 	return 0;
     }
     
-    
+    //////////////////////////////////////////////////
+    //////////////////////////////////////////////////
+    int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
+
+    if( ret!=0 )
+    {
+	printf ("Create pthread error!\n");
+	exit (1);
+    }
 
 
+    while( false == isFileEnd )
+    {
+	isFileEnd = LoadBuf( & file );	    
+    } /* while */
+
+    while ( 0 != pQue->mNumb )
+    {
+	// Wait here when there is still full buffer
+    } /* while */
 
 
-
-
-
-
-
-
-
-
-
+    return EC;
 
 }
+
 
 
 
@@ -355,17 +357,18 @@ bool LoadBuf( ifstream* pFile)
     assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
 
     // Wait for empty buffer ========== 
-    while (  _BUF_NUM == pQue->mNumb ) 
+    while (  _BUF_NUM == pQue->mNumb )
     {
 	// Just wait here if all the buffer is full
-    } 
+    }
 
 
     // Load buffer to Memory ========== 
-    unsigned int fileRemain;	// Get how much data remain
+    uint fileRemain;	// Get how much data remain
     fileRemain = _FileSize - pFile->tellg() ;
 
-    // Switch for different case of "File Remain"
+
+    // Switch for different case of "File Remain" ==========
     if( 0 == fileRemain )
     {
 	// ----- Case 1 ------------------------------------
@@ -377,7 +380,7 @@ bool LoadBuf( ifstream* pFile)
 	// ----- Case 2 ------------------------------------
 	// When the file remaining is NOT enough for a hole buffer
 	// which is sized by Mocra _BUF_SIZE
-	pFile.read( (char*)(pQue->p_put->p_data) , fileRemain );
+	pFile->read( (char*)(pQue->p_put->p_data) , fileRemain );
 
 
 	// Load buffer size in fect ==========
@@ -399,21 +402,22 @@ bool LoadBuf( ifstream* pFile)
 	// ----- Case 3 -------------------------------------
 	// When there is still enough room for a hole buffer
 
-	pFile.read( (char*)(pQue->p_put->p_data) , _BUF_SIZE );
+	pFile->read( (char*)(pQue->p_put->p_data) , _BUF_SIZE );
 
 
 	// Check the last _Event_Separator ========== 
-	int iter;
-	for ( iter = _BUF_SIZE -1; iter > 0; iter--) 
+	int i;
+	for ( i = _BUF_SIZE -1; i > 0; i--) 
 	{
-	    if( _Event_Separator == pQue->p_put->p_data[iter] )
+	    if( _Event_Separator == pQue->p_put->p_data[i] )
 	    {
 		break;
 	    }
-	} /* iter */
+	} /* i */
+
 
 	// Load buffer size in fect ==========
-	pQue->p_put->m_size = iter + 1;
+	pQue->p_put->m_size = i + 1;
 
 
 	// Change the pointer to the next buffer ==========
@@ -421,7 +425,7 @@ bool LoadBuf( ifstream* pFile)
 
 
 	// Change the file position ==========
-	pFile->seekg( -( (_BUF_SIZE- 1- iter)*sizeof(int)) ,
+	pFile->seekg( -( (_BUF_SIZE- 1- i)*sizeof(int)) ,
 		      ios::end );
 
 
@@ -439,7 +443,7 @@ bool LoadBuf( ifstream* pFile)
 # Input:	
 # Output:	
 ****************************************************/
-bool BufDecode()
+void* DecodeBuf()
 {
     assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
 
@@ -449,24 +453,35 @@ bool BufDecode()
 	// Just wait here if all the buffer is empty
     } 
 
+    //////////////////////////////////////////////////
+    //////////////////////////////////////////////////
+    ////// 下面这个 while 再看一下, 推演一下循环情况 ///////
+    //////////////////////////////////////////////////
+    //////////////////////////////////////////////////
 
     // Decode the buffer for series of events ==========
-    int iter = 0;
-    while ( iter < (pQue->p_get->m_size) )
+    uint* iter = pQue->p_get->p_data;
+    short size = 0;
+
+    while( iter < ( (pQue->p_get->p_data)+(pQue->p_get->m_size)) )
     {
-	
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	// Event decode >>>>>>>>>>>>>>>>>>>>>>>>>
+	// Event decode ========== 
+	++ size;
+	if( _Event_Separator == *(iter +size) )
+	{
+	    // When coming up with the Separator ------
+	    bool b_Decode = EventDecode( iter , size );
 
+	    if( false == b_Decode )
+	    {
+		logFile << ">> Event load fail. " << endl;
+		return ;
+	    }
 
-
+	    iter += size;	// Put 'iter' to next event
+	    ++ EC;		// Event counter ++
+	    size = 0;
+	}
 
     } /* while */
 
@@ -478,28 +493,21 @@ bool BufDecode()
     // Change the number of full empty ==========
     -- ( pQue->p_get->mNumb );
 
-
-
-
-
-
-
-
-
+    return ;
 }
 
 
 
 /***************************************************
 # Abstract:
-# Input:	(unsigned int *) buf
+# Input:	(uint *) buf
 			Pointer to the data buffer
 		(short) size
 			The size of the data buffer
 # Output:	(bool)
 
 ****************************************************/
-bool EventDecode( unsigned int* buf, short size)
+bool EventDecode( uint* buf, short size)
 {
 
     if( size < 9  )
@@ -509,7 +517,7 @@ bool EventDecode( unsigned int* buf, short size)
 	return false;
     }
 
-    unsigned int* iter = buf;
+    uint* iter = buf;
 
 
     // Decode the event header ==========
@@ -522,11 +530,11 @@ bool EventDecode( unsigned int* buf, short size)
 	// Crate header missing ------
 	logFile << ">> (W) On Event Number ( " 
 		<< dataReg.EventCounter
-		<< " ). Crate header missing. "<< endl;
+		<< " ). Crate header missing. " << endl;
 	return false;
     }
 
-    if( _Crate_Num != *( iter ++))
+    if( _Crate_Num != *(iter ++) )
     {
 	// Crate number Error ------
 	logFile << ">> (W) On Event Number ( "
@@ -619,97 +627,86 @@ bool EventDecode( unsigned int* buf, short size)
 	}
 	
 
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	// >>>>Switch to different modul
-
 	switch( geo )
 	{
 	  case 3 :
-
+	    iter = 
+	      Decode_v830ac( iter, chlNum, ( dataReg.v830ac_3) );
 	    break;
 
 	  case 4 :
-
+	    iter = 
+	      Decode_v785n( iter, chlNum, ( dataReg.v785n_4) );
 	    break;
 
 	  case 5 : 
-
+	    iter = 
+	      Decode_v785n( iter, chlNum, ( dataReg.v775n_5) );
 	    break;
 
 	  case 7 : 
-
+	    iter = 
+	      Decode_v785n( iter, chlNum, ( dataReg.v775n_7) );
 	    break;
 
 	  case 8 : 
-
+	    iter = 
+	      Decode_v785n( iter, chlNum, ( dataReg.v775n_8) );
 	    break;
 
 	  case 10 : 
-
+	    iter = 
+	      Decode_v785( iter, chlNum, ( dataReg.v785_10) );
 	    break;
 
 	  case 12 : 
-
+	    iter = 
+	      Decode_v792( iter, chlNum, ( dataReg.v792_12) );
 	    break;
 
 	  case 13 : 
-
+	    iter = 
+	      Decode_v792( iter, chlNum, ( dataReg.v792_13) );
 	    break;
 
 	  case 15 : 
-
+	    iter = 
+	      Decode_v792( iter, chlNum, ( dataReg.v792_15) );
 	    break;
 
 	  case 16 : 
-
+	    iter = 
+	      Decode_v792( iter, chlNum, ( dataReg.v792_16) );
 	    break;
 
 	  case 18 :
-
+	    iter = 
+	      Decode_v785( iter, chlNum, ( dataReg.v785_18) );
 	    break;
 
 	  case 19 :
-
+	    iter = 
+	      Decode_v785( iter, chlNum, ( dataReg.v785_19) );
 	    break;
-
 
 	  default: break;
 
-	}	/* switch */
-
-
-
-
-
-
-
-
-	
+	} /* switch */
 
 
     } /* while */
 
-
-
+    return true;
 
 }
 
 
 
 // Decode v830ac ==========
-unsigned int* Decode_v830ac( unsigned int* iter,
-			     short chlNum, 
-			     int* reg)
+uint* Decode_v830ac( uint* iter,
+		     short chlNum, 
+		     int* reg)
 {
     short chl;
     int tempdata;
@@ -721,7 +718,9 @@ unsigned int* Decode_v830ac( unsigned int* iter,
 	reg[ chl ] = tempdata;
 	++ iter;
     } /* i */
-    
+
+    // NOTE: There is no a END mark on data of v830ac
+
     return iter;
 
 }
@@ -729,9 +728,9 @@ unsigned int* Decode_v830ac( unsigned int* iter,
 
 
 // Decode v792 ==========
-unsigned int* Decode_v792( unsigned int* iter,
-			   short chlNum, 
-			   int* reg)
+uint* Decode_v792( uint* iter,
+		   short chlNum, 
+		   int* reg)
 {
     short chl;
     int tempdata;
@@ -756,6 +755,8 @@ unsigned int* Decode_v792( unsigned int* iter,
 	++ iter;
     } /* i */
     
+    ++ iter;			// Skip the END mark
+
     return iter;
 
 }
@@ -763,9 +764,9 @@ unsigned int* Decode_v792( unsigned int* iter,
 
 
 // Decode v785n ==========
-unsigned int* Decode_v785n( unsigned int* iter,
-			    short chlNum, 
-			    int* reg)
+uint* Decode_v785n( uint* iter,
+		    short chlNum, 
+		    int* reg)
 {
     short chl;
     int tempdata;
@@ -791,6 +792,7 @@ unsigned int* Decode_v785n( unsigned int* iter,
 	++ iter;
     } /* i */
     
+    ++ iter;			// Skip the END mark
     return iter;
 
 }
@@ -798,9 +800,9 @@ unsigned int* Decode_v785n( unsigned int* iter,
 
 
 // Decode v785 ==========
-unsigned int* Decode_v785( unsigned int* iter,
-			   short chlNum, 
-			   int* reg)
+uint* Decode_v785( uint* iter,
+		   short chlNum, 
+		   int* reg)
 {
     short chl;
     int tempdata;
@@ -825,6 +827,7 @@ unsigned int* Decode_v785( unsigned int* iter,
 	++ iter;
     } /* i */
     
+    ++ iter;			// Skip the END mark
     return iter;
 
 }
@@ -832,9 +835,9 @@ unsigned int* Decode_v785( unsigned int* iter,
 
 
 // Decode v775n ==========
-unsigned int* Decode_v775n( unsigned int* iter,
-			    short chlNum, 
-			    int* reg)
+uint* Decode_v775n( uint* iter,
+		    short chlNum, 
+		    int* reg)
 {
     short chl;
     int tempdata;
@@ -866,13 +869,14 @@ unsigned int* Decode_v775n( unsigned int* iter,
 	++ iter;
     } /* i */
     
+    ++ iter;			// Skip the END mark
     return iter;
 
 }
 
 
 
-// Scan for data files
+// Scan for data files ==========
 int scanDir(vector<string>* file_names)
 {
     int file_counter = 0;
