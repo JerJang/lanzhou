@@ -91,6 +91,7 @@ using namespace std;
 #define	_DATA_DIRE	"./source/"	// Dir of the data files 
 #define _LOG_FILE	"log"		// The log file
 #define _MAX_FILE_NUM	10e7		// Max of data files 
+
 #define _BUF_SIZE	(5*1024*1024)	// Buffer size ( byte )
 #define _BUF_NUM	2		// buffer number
 
@@ -147,7 +148,7 @@ struct cirQueue
 ofstream logFile;
 uint EC;			// Event Counter
 uint _FileSize;			// The Size of the file
-cirQueue* pQue;			// Pointer to Data buffer
+cirQueue* pQue = new cirQueue;	// Pointer to Data buffer
 sEData dataReg;			// Data Register
 
 pthread_t t_load;		// Thread for loading buffer
@@ -174,6 +175,9 @@ uint* Decode_v785( uint* iter,short chlNum, short* reg);
 uint* Decode_v775n( uint* iter,short chlNum, short* reg);
 
 
+void displayEvent();
+void initReg( uint counter );
+
 
 
 
@@ -183,11 +187,11 @@ int main(int argc, char *argv[])
     cout << "zhangzhelucky@126.com" << endl;
 
     cout << "Creating log file ... ";
-    logFile.open( _LOG_FILE );
+    logFile.open( _LOG_FILE , ios::trunc );
     if( ! logFile.is_open() )
     {
 	cout << endl
-	     << "Fail in creating log file. Exit." << endl;
+	     << "Failed in creating log file. Exit." << endl;
 	_exit( 0 );
     }
     cout << "Done." << endl;
@@ -217,8 +221,8 @@ int main(int argc, char *argv[])
       }
     */
 
-    logFile << fileNum << " files found." << endl;
-    cout << fileNum << " files found."
+    logFile << fileNum << " files found. " << endl;
+    cout << fileNum << " files found. "
 	 << "Press Enter to Confirm. " << endl;
     getchar();
 
@@ -226,14 +230,16 @@ int main(int argc, char *argv[])
     // Prepare data buffer ==========
     for (int i = 0; i < _BUF_NUM ; i++)
     {
-	pQue -> buf[i].p_data = new uint[ _BUF_SIZE ];
-	pQue -> buf[i].m_size = 0;
+    	pQue -> buf[i].p_data = new uint[ _BUF_SIZE ];
+    	pQue -> buf[i].m_size = 0;
     } /* i */
-    
+
+
     for (int i = 0; i < _BUF_NUM-1 ; i++) 
     {
 	pQue->buf[i].p_next = & ( pQue->buf[i+1] );
     } /* i */
+
     pQue->buf[ _BUF_NUM-1 ].p_next = & ( pQue->buf[0] );
 
     pQue -> mNumb = 0;			// Empty queue
@@ -247,7 +253,7 @@ int main(int argc, char *argv[])
 	logFile << "----- File --- " << i << " -----" << endl
 		<< ">> File Name: " << file_names.at(i) << endl;
     	cout << endl 
-	     << "--- Preparing for decoding file: " 
+	     << "--- Preparing for decoding file: "
 	     << file_names[i] << endl;
 
 	// Decode current fule -----
@@ -286,7 +292,7 @@ int main(int argc, char *argv[])
 	Data File Name
 # Output:	(int) x
 	>0	x Events loaded, Succeed in loading the hole file
-	=0	Fail in decoding the file, NO Events Loaded
+	=0	Failed in decoding the file, NO Events Loaded
 	<0	(-x) Events loaded, BUT interrupted inside the file
 
 	    The reason who caused the interruption will be record
@@ -302,7 +308,7 @@ int Decode( string fileName )
     if( ! file.is_open() )
     {
 	cout << "File in opening file." << endl;
-	logFile << ">> (E) Fail in opening file." << endl;
+	logFile << ">> (E) Failed in opening file." << endl;
 	return 0;
     }
     logFile << ">> Done." << endl;
@@ -334,24 +340,42 @@ int Decode( string fileName )
     
     //////////////////////////////////////////////////
     //////////////////////////////////////////////////
-    int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
+    //////////////////////////////////////////////////
+    //////////////////////////////////////////////////
+    //////////////////////////////////////////////////
 
-    if( ret!=0 )
-    {
-	printf ("Create pthread error!\n");
-	_exit (1);
-    }
+    // int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
+
+    // if( ret!=0 )
+    // {
+    // 	printf ("Create pthread error!\n");
+    // 	_exit (1);
+    // }
+
+    // while( false == isFileEnd )
+    // {
+    // 	isFileEnd = LoadBuf( & file );	    
+    // } /* while */
+
+    // while ( 0 != pQue->mNumb )
+    // {
+    // 	// Wait here when there is still full buffer
+    // } /* while */
 
 
+
+
+
+    // ???????????????????????????????????????????????????
+    // ???????????????????????????????????????????????????
+    // ???????????????????????????????????????????????????
     while( false == isFileEnd )
     {
-	isFileEnd = LoadBuf( & file );	    
+    	isFileEnd = LoadBuf( & file );	    
+	DecodeBuf( NULL );
+
     } /* while */
 
-    while ( 0 != pQue->mNumb )
-    {
-	// Wait here when there is still full buffer
-    } /* while */
 
 
     return EC;
@@ -372,6 +396,14 @@ int Decode( string fileName )
 bool LoadBuf( ifstream* pFile)
 {
     assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
+
+    // ?????????????????????????????????????
+    // ?????????????????????????????????????
+    // ?????????????????????????????????????
+    cout << ">";
+
+
+
 
     // Wait for empty buffer ========== 
     while (  _BUF_NUM == pQue->mNumb )
@@ -483,15 +515,20 @@ void* DecodeBuf( void* )
     while( iter < ( (pQue->p_get->p_data)+(pQue->p_get->m_size)) )
     {
 	// Event decode ========== 
-	++ size;
 	if( _Event_Separator == *(iter +size) )
 	{
 	    // When coming up with the Separator ------
+	    // Decode the event ----
+	    ++ size;
+
+	    cout << "Calling event decode function" << endl;
 	    bool b_Decode = EventDecode( iter , size );
 
 	    if( false == b_Decode )
 	    {
-		logFile << ">> Event load fail. " << endl;
+		logFile << ">> Event load failed. " << endl;
+		cout << "ERROR ---------- event load failed" << endl;
+
 		return NULL;
 	    }
 
@@ -499,6 +536,8 @@ void* DecodeBuf( void* )
 	    ++ EC;		// Event counter ++
 	    size = 0;
 	}
+
+	++ size;
 
     } /* while */
 
@@ -526,6 +565,9 @@ void* DecodeBuf( void* )
 ****************************************************/
 bool EventDecode( uint* buf, short size)
 {
+    cout << "Event Decode ON" << endl;
+    cout << "BUF = " << buf << endl;
+    cout << "SIZE = " << size << endl;
 
     if( size < 9  )
     {
@@ -534,12 +576,14 @@ bool EventDecode( uint* buf, short size)
 	return false;
     }
 
+
+    // Decode the event header ==========
     uint* iter = buf;
 
 
-    // Decode the event header ==========
-    dataReg.EventCounter = *( iter++ );
-    
+    // Initialize the data register ==========
+    initReg( *( iter++ ) );
+
 
     // Check the crate header and number ==========
     if( _Crate_Header != *( iter ++ ) )
@@ -566,8 +610,14 @@ bool EventDecode( uint* buf, short size)
 
 
     // Decode moduls ========
-    while ( iter < ( buf + size ) )
+    while ( iter < ( buf + size -1) )
     {
+	// ?????????????????????????????????????
+	// ?????????????????????????????????????
+	// ?????????????????????????????????????
+	cout << iter << " -> " << hex << (int)(*iter) << endl;
+
+
 	// Decode the modul header ------
 	short geo;		// The 'Goe' of the modul
 	short mark;		// The 'Mark'
@@ -576,7 +626,7 @@ bool EventDecode( uint* buf, short size)
 
 	// Get geo, mark, crateNum and chlNum ------
 	geo = ( ( *iter ) & _GeoMask ) >> _GeoR;
-
+	
 	if( 3 == geo )	
 	{
 	    // For Modul 830ac ///////////////////////////////
@@ -586,15 +636,17 @@ bool EventDecode( uint* buf, short size)
 	    // Check mark ------
 	    if( _MarkHeader830 != mark )
 	    {
-		// Check event header mark fail
+		// Check event header mark failed
 		logFile << ">> (W) On Event Number ( "
 			<< dataReg.EventCounter
 			<< " ). Check event header mark Error. "
 			<< endl;
+
 		return false;
 	    }
 
 	    chlNum =( (*iter) & _ChlNumMask830 ) >>_ChlNumR830;
+
 	    crateNum = 1;
 
 	}
@@ -607,11 +659,12 @@ bool EventDecode( uint* buf, short size)
 	    // Check mark ------
 	    if( _MarkHeader != mark )
 	    {
-		// Check event header mark fail
+		// Check event header mark failed
 		logFile << ">> (W) On Event Number ( "
 			<< dataReg.EventCounter
 			<< " ). Check event header mark Error. " 
 			<< endl;
+
 		return false;
 	    }
 
@@ -620,10 +673,25 @@ bool EventDecode( uint* buf, short size)
 
 	}
 
+
+
+
+	// ?????????????????????????????????????
+	// ?????????????????????????????????????
+	// ?????????????????????????????????????
+	cout << "------ geo = " << geo << endl;
+	cout << "------ chlNum = " << chlNum << endl;
+	cout << "------ mark = " << mark << endl;
+	//	getchar();		
+
+
+
+
+
 	// Check gro ------
 	// if(  )
 	// {
-	//     // Check event header mark fail
+	//     // Check event header mark failed
 	//     logFile << ">> (W) On Event Number ( "
 	// 	    << dataReg.EventCounter
 	// 	    << " ). Check event geo Error. " 
@@ -635,16 +703,17 @@ bool EventDecode( uint* buf, short size)
 	// Check crate number ------
 	if( _Crate_Num != crateNum )
 	{
-	    // Check event header mark fail
+	    // Check event header mark failed
 	    logFile << ">> (W) On Event Number ( "
 		    << dataReg.EventCounter
 		    << " ). Check crate number Error. " 
 		    << endl;
+
 	    return false;
 	}
 	
 
-	// >>>>Switch to different modul
+	// >>>> Switch to different modul ==========
 	switch( geo )
 	{
 	  case 3 :
@@ -708,11 +777,12 @@ bool EventDecode( uint* buf, short size)
 	    break;
 
 	  default: break;
-
 	} /* switch */
 
-
     } /* while */
+
+    displayEvent();
+    getchar();    
 
     return true;
 
@@ -736,8 +806,7 @@ uint* Decode_v830ac( uint* iter,short chlNum, int* reg)
 
     // NOTE: There is no a END mark on data of v830ac
 
-    return iter;
-
+    return (iter+1);
 }
 
 
@@ -770,7 +839,7 @@ uint* Decode_v792( uint* iter,short chlNum, short* reg)
     
     ++ iter;			// Skip the END mark
 
-    return iter;
+    return (iter+1);
 
 }
 
@@ -804,7 +873,7 @@ uint* Decode_v785n( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return iter;
+    return (iter+1);
 
 }
 
@@ -837,7 +906,7 @@ uint* Decode_v785( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return iter;
+    return (iter+1);
 
 }
 
@@ -877,7 +946,7 @@ uint* Decode_v775n( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return iter;
+    return (iter+1);
 
 }
 
@@ -914,7 +983,172 @@ int scanDir(vector<string>* file_names)
 
 
 
-// Load a data Buffer
+// Initialize the data register ==========
+void initReg( uint counter )
+{
+    dataReg.EventCounter = counter;
+
+    for (int i = 0; i < 32; i++)
+    {
+	dataReg.v830ac_3[i] = 0;
+	dataReg.v785_10[i] = 0;
+	dataReg.v792_12[i] = 0;
+	dataReg.v792_13[i] = 0;
+	dataReg.v792_15[i] = 0;
+	dataReg.v792_16[i] = 0;
+	dataReg.v785_18[i] = 0;
+	dataReg.v785_19[i] = 0;
+    }
+
+    for (int i = 0; i < 16; i++)
+    {
+	dataReg.v785n_4[i] = 0;
+	dataReg.v775n_5[i] = 0;
+	dataReg.v775n_7[i] = 0;
+	dataReg.v775n_8[i] = 0;
+    }
+}
+
+
+
+
+void displayEvent()
+{
+    cout << "======> Event: " << dataReg.EventCounter << endl;
+
+    // -- 3 ----
+    cout << "Geo          = 3" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v830ac_3[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 4 ----
+    cout << "Geo          = 4" << endl 
+	 << "MaxChannel   = 16" << endl
+	 << "chdata[16]   = " ;
+    for (int i = 0; i < 16; i++)
+    {
+	cout << dec <<  dataReg.v785n_4[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 5 ----
+    cout << "Geo          = 5" << endl 
+	 << "MaxChannel   = 16" << endl
+	 << "chdata[16]   = " ;
+    for (int i = 0; i < 16; i++)
+    {
+	cout << dec <<  dataReg.v775n_5[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 7 ----
+    cout << "Geo          = 7" << endl 
+	 << "MaxChannel   = 16" << endl
+	 << "chdata[16]   = " ;
+    for (int i = 0; i < 16; i++)
+    {
+	cout << dec <<  dataReg.v775n_7[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 8 ----
+    cout << "Geo          = 8" << endl 
+	 << "MaxChannel   = 16" << endl
+	 << "chdata[16]   = " ;
+    for (int i = 0; i < 16; i++)
+    {
+	cout << dec <<  dataReg.v775n_8[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 10 ----
+    cout << "Geo          = 10" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v785_10[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 12 ----
+    cout << "Geo          = 12" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v792_12[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 13 ----
+    cout << "Geo          = 13" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v792_13[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 15 ----
+    cout << "Geo          = 15" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v792_15[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 16 ----
+    cout << "Geo          = 16" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v792_16[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 18 ----
+    cout << "Geo          = 18" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v785_18[i] << ", ";
+    }
+    cout << endl;
+
+
+    // -- 19 ----
+    cout << "Geo          = 19" << endl 
+	 << "MaxChannel   = 32" << endl
+	 << "chdata[32]   = " ;
+    for (int i = 0; i < 32; i++)
+    {
+	cout << dec <<  dataReg.v785_19[i] << ", ";
+    }
+    cout << endl;
+
+}
+
 
 
 
