@@ -26,6 +26,7 @@
 using namespace std;
 
 
+
 // -------------------------------------------------
 //     These macros below this line are very important 
 // keys for decoding, do NOT try to change them.
@@ -106,10 +107,11 @@ using namespace std;
 #define _BUF_SIZE	(25*1024*1024)	// Buffer size ( byte )
 #define _BUF_NUM	5		// buffer number
 
-#define _THRES_WAIT	1000
+#define _THRE_WAIT	1000
 
 //#define _TEST_				// On Test Modol
-
+//#define _OUTPUT_
+//#define _CONFIG_
 
 //     You can configuer the program by changing these 
 // macros above this line, BUT make sure that you know 
@@ -118,7 +120,7 @@ using namespace std;
 
 
 
-typedef unsigned int		uint;
+typedef unsigned int	uint;
 
 struct sEventDataRegister
 {
@@ -174,7 +176,6 @@ uint _FileSize;			// The Size of the file
 cirQueue* pQue = new cirQueue;	// Pointer to Data buffer
 sEData dataReg;			// Data Register
 
-pthread_t t_load;		// Thread for loading buffer
 pthread_t t_decode;		// Thread for decoding buffer
 bool isFileEnd;			// Indicate if current file end
 
@@ -230,12 +231,16 @@ int main(int argc, char *argv[])
 
 
     // List all files found to Screan ==========
-    /*
+#ifdef _TEST_
+
       for (int i = 0; i < file_names.size() ; i++) 
       {
-      cout << file_names.at(i) << '\t';
+	  cout << file_names.at(i) << '\t';
       }
-    */
+
+#endif // _TEST_
+
+
 
     logFile << fileNum << " files found. " << endl;
     cout << fileNum << " files found. " << endl
@@ -272,6 +277,14 @@ int main(int argc, char *argv[])
 	     << "--- Preparing for decoding file: "
 	     << file_names[i] << endl;
 
+#ifdef _TEST_
+
+	cout << "Press 'Enter' to continue ... " ;
+	getchar();
+    
+#endif // _TEST_
+
+
 	// Decode current fule -----
 	isFileEnd = false;
 
@@ -283,6 +296,14 @@ int main(int argc, char *argv[])
 	cout << temp << " Events decoded in the file." << endl;
 	logFile << ">> " << temp 
 		<< " Events got in this file." << endl << endl;
+
+#ifdef _TEST_
+
+	cout << "Press 'Enter' to continue ... " ;
+	getchar();
+    
+#endif // _TEST_
+
 
     }
 
@@ -335,7 +356,7 @@ int Decode( string fileName )
     file.seekg( 0 , ios::end );		// Seek to the end
     _FileSize = file.tellg();		// The Size of the file
     file.seekg( ios::beg );		// Seek back
-    
+
 
     // Get file header and the comments ==========
     char comment[1024];
@@ -375,7 +396,7 @@ int Decode( string fileName )
     while ( 0 != pQue->mNumb )
     {
     	// Wait here when there is still full buffer
-    	usleep(_THRES_WAIT);
+    	usleep(_THRE_WAIT);
 
     } /* while */
 
@@ -411,14 +432,14 @@ bool LoadBuf( ifstream* pFile)
     // Wait for empty buffer ========== 
     while (  _BUF_NUM == pQue->mNumb )
     {
-#ifdef _TEST_
+#ifdef _CONFIG
 	
 	cout << "+" ;
 	
-#endif // _TEST_	
+#endif // _CONFIG_
 
 	// Just wait here if all the buffer is full
-	usleep(_THRES_WAIT);
+	usleep(_THRE_WAIT);
     }
 
 
@@ -514,14 +535,14 @@ void* DecodeBuf( void* )
 	while ( 0 == pQue->mNumb )
 	{
 
-#ifdef _TEST_
+#ifdef _CONFIG_
 
 	    cout << "-" ;
 
-#endif // _TEST_
+#endif // _CONFIG_
 
 	    // Just wait here if all the buffer is empty
-	    usleep(_THRES_WAIT);
+	    usleep(_THRE_WAIT);
 	}
 
 
@@ -589,9 +610,9 @@ bool EventDecode( uint* buf, short size)
     // cout << "BUF = " << buf << endl;
     // cout << "SIZE = " << size << endl;
 
-#ifndef _TEST_
+#ifdef _TEST_
     
-    //    cout << "EC = " << EC << endl;
+    cout << "EC = " << EC << endl;
     
 #endif // _TEST_
 
@@ -794,11 +815,14 @@ bool EventDecode( uint* buf, short size)
     } /* while */
 
     
-    // // -----------------------------------------------
-    // // Calling this to display the event just decoded
-    // displayEvent();
-    // // -----------------------------------------------
-
+#ifdef _OUTPUT_
+    
+    // -----------------------------------------------
+    // Calling this to display the event just decoded
+    displayEvent();
+    // -----------------------------------------------
+    
+#endif // _OUTPUT_
 
     return true;
 }
