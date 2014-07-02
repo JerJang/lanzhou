@@ -94,6 +94,8 @@ using namespace std;
 
 #define _BUF_SIZE	(5*1024*1024)	// Buffer size ( byte )
 #define _BUF_NUM	2		// buffer number
+#define _THRES_WAIT	100000
+
 
 
 typedef unsigned int		uint;
@@ -327,8 +329,6 @@ int Decode( string fileName )
     logFile << ">> File comments: " << comment  << endl;
 
     file.seekg(1024 ,ios::beg);	// Skip the header 
-    
-
 
 
     // Check the first Event Separator ==========
@@ -342,42 +342,40 @@ int Decode( string fileName )
     
     //////////////////////////////////////////////////
     //////////////////////////////////////////////////
-    // int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
+    int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
 
-    // if( ret!=0 )
-    // {
-    // 	printf ("Create pthread error!\n");
-    // 	_exit (1);
-    // }
+    if( ret!=0 )
+    {
+    	printf ("Create pthread error!\n");
+    	_exit (1);
+    }
 
-    // while( false == isFileEnd )
-    // {
-    // 	isFileEnd = LoadBuf( & file );	    
-    // } /* while */
-
-    // while ( 0 != pQue->mNumb )
-    // {
-    // 	// Wait here when there is still full buffer
-    // } /* while */
-
-
-
-    // ???????????????????????????????????????????????????
-    // ???????????????????????????????????????????????????
-    // ???????????????????????????????????????????????????
     while( false == isFileEnd )
     {
-    	isFileEnd = LoadBuf( & file );	    
-    	DecodeBuf( NULL );
+    	isFileEnd = LoadBuf( & file );
 
     } /* while */
 
+    while ( 0 != pQue->mNumb )
+    {
+    	cout << "z" ;
+    	usleep(_THRES_WAIT);
+    	// Wait here when there is still full buffer
+    } /* while */
+
+    // ???????????????????????????????????????????????????
+    // ???????????????????????????????????????????????????
+    // ???????????????????????????????????????????????????
+    // while( false == isFileEnd )
+    // {
+    // 	isFileEnd = LoadBuf( & file );	    
+    // 	DecodeBuf( NULL );
+
+    // } /* while */
 
 
     return EC;
-
 }
-
 
 
 
@@ -399,11 +397,11 @@ bool LoadBuf( ifstream* pFile)
     cout << ">";
 
 
-
-
     // Wait for empty buffer ========== 
     while (  _BUF_NUM == pQue->mNumb )
     {
+	cout << "+" << pQue->mNumb;
+	usleep(_THRES_WAIT);
 	// Just wait here if all the buffer is full
     }
 
@@ -439,6 +437,7 @@ bool LoadBuf( ifstream* pFile)
 	// Change the number of full empty ==========
 	++ ( pQue->mNumb );
 
+	cout << "File Remain " << fileRemain << endl;
 	return true;
 
     }
@@ -475,7 +474,6 @@ bool LoadBuf( ifstream* pFile)
 	pFile -> seekg( seek_back , ios::cur );
 
 
-
 	// Change the number of full empty ==========
 	++ ( pQue->mNumb );
 
@@ -485,6 +483,7 @@ bool LoadBuf( ifstream* pFile)
 }
 
 
+
 /***************************************************
 # Abstract:
 # Input:	
@@ -492,60 +491,74 @@ bool LoadBuf( ifstream* pFile)
 ****************************************************/
 void* DecodeBuf( void* )
 {
-    assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
-
-    // Wait for prepared buffer ========== 
-    while ( 0 == pQue->mNumb )
+    while( (! isFileEnd) || (0 != pQue->mNumb) )
     {
-	// Just wait here if all the buffer is empty
-    } 
+	assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
 
-    //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
-    ////// 下面这个 while 再看一下, 推演一下循环情况 ///////
-    //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
-
-    // Decode the buffer for series of events ==========
-    uint* iter = pQue->p_get->p_data;
-    short size = 0;
-
-    while( iter < ( (pQue->p_get->p_data)+(pQue->p_get->m_size)) )
-    {
-	// Event decode ========== 
-	if( _Event_Separator == *(iter +size) )
+	// Wait for prepared buffer ========== 
+	while ( 0 == pQue->mNumb )
 	{
-	    // When coming up with the Separator ------
-	    // Decode the event ----
-	    ++ size;
+	    cout << "-" ;
+	    usleep(_THRES_WAIT);
 
-	    //	    cout << "Calling event decode function" << endl;
-	    bool b_Decode = EventDecode( iter , size );
+	    // Just wait here if all the buffer is empty
+	} 
 
-	    if( false == b_Decode )
+	//////////////////////////////////////////////////
+	//////////////////////////////////////////////////
+	////// 脧脗脙忙脮芒赂枚 while 脭脵驴麓脪禄脧脗, 脥脝脩脻脪禄脧脗脩颅禄路脟茅驴枚 ///////
+	//////////////////////////////////////////////////
+	//////////////////////////////////////////////////
+
+	// Decode the buffer for series of events ==========
+	uint* iter = pQue->p_get->p_data;
+	short size = 0;
+
+	while( iter < ( (pQue->p_get->p_data)+(pQue->p_get->m_size)) )
+	{
+	    // Event decode ========== 
+	    if( _Event_Separator == *(iter +size) )
 	    {
-		logFile << ">> Event load failed. " << endl;
-		cout << "ERROR ---------- event load failed" << endl;
+		// When coming up with the Separator ------
+		// Decode the event ----
+		++ size;
 
-		return NULL;
+		// cout << "Calling event decode function" << endl;
+		bool b_Decode = EventDecode( iter , size );
+
+		if( false == b_Decode )
+		{
+		    logFile << ">> Event load failed. " << endl;
+		    cout << "ERROR ---------- event load failed" 
+			 << endl;
+
+		    return NULL;
+		}
+
+		iter += size;	// Put 'iter' to next event
+		++ EC;		// Event counter ++
+		size = 0;
 	    }
 
-	    iter += size;	// Put 'iter' to next event
-	    ++ EC;		// Event counter ++
-	    size = 0;
-	}
+	    ++ size;
 
-	++ size;
-
-    } /* while */
+	} /* while */
 
 
-    // Change the pointer to the next buffer ==========
-    pQue->p_get = pQue->p_get->p_next;
+	// Change the pointer to the next buffer ==========
+	pQue->p_get = pQue->p_get->p_next;
 
 
-    // Change the number of full empty ==========
-    -- ( pQue->mNumb );
+	// Change the number of full empty ==========
+	-- ( pQue->mNumb );
+	cout << "mNumb = " << pQue->mNumb << endl;
+
+
+
+    }
+
+
+
 
     return NULL;
 }
