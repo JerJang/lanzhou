@@ -131,7 +131,7 @@ typedef sEventDataRegister	sEData;
 struct sDataBuf
 {
     uint* p_data;
-    unsigned short m_size;	// Size of buffer in fect (int)
+    unsigned int m_size;	// Size of buffer in fact (int)
     sDataBuf* p_next;
 };
 
@@ -263,7 +263,7 @@ int main(int argc, char *argv[])
 	// ///////////////////////////////////////////
 	int temp = Decode( file_names.at(i) );
 
-	cout << temp << "Events decoded in the file." << endl;
+	cout << temp << " Events decoded in the file." << endl;
 	logFile << ">> " << temp 
 		<< " Events got in this file." << endl;
 
@@ -329,6 +329,8 @@ int Decode( string fileName )
     file.seekg(1024 ,ios::beg);	// Skip the header 
     
 
+
+
     // Check the first Event Separator ==========
     uint temp;
     file.read( (char*) (&temp) , sizeof(temp));
@@ -340,10 +342,6 @@ int Decode( string fileName )
     
     //////////////////////////////////////////////////
     //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
-
     // int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
 
     // if( ret!=0 )
@@ -364,15 +362,13 @@ int Decode( string fileName )
 
 
 
-
-
     // ???????????????????????????????????????????????????
     // ???????????????????????????????????????????????????
     // ???????????????????????????????????????????????????
     while( false == isFileEnd )
     {
     	isFileEnd = LoadBuf( & file );	    
-	DecodeBuf( NULL );
+    	DecodeBuf( NULL );
 
     } /* while */
 
@@ -432,7 +428,7 @@ bool LoadBuf( ifstream* pFile)
 	pFile->read( (char*)(pQue->p_put->p_data) , fileRemain );
 
 
-	// Load buffer size in fect ==========
+	// Load buffer size in fact ==========
 	pQue->p_put->m_size = ( fileRemain / sizeof(int) );
 
 
@@ -456,7 +452,7 @@ bool LoadBuf( ifstream* pFile)
 
 	// Check the last _Event_Separator ========== 
 	int i;
-	for ( i = _BUF_SIZE -1; i > 0; i--) 
+	for ( i = (_BUF_SIZE/sizeof(uint)) -1; i > 0; i--) 
 	{
 	    if( _Event_Separator == pQue->p_put->p_data[i] )
 	    {
@@ -465,7 +461,7 @@ bool LoadBuf( ifstream* pFile)
 	} /* i */
 
 
-	// Load buffer size in fect ==========
+	// Load buffer size in fact ==========
 	pQue->p_put->m_size = i + 1;
 
 
@@ -474,8 +470,10 @@ bool LoadBuf( ifstream* pFile)
 
 
 	// Change the file position ==========
-	pFile->seekg( -( (_BUF_SIZE- 1- i)*sizeof(int)) ,
-		      ios::end );
+
+	int seek_back = (i+1)*sizeof(uint) - _BUF_SIZE;
+	pFile -> seekg( seek_back , ios::cur );
+
 
 
 	// Change the number of full empty ==========
@@ -521,7 +519,7 @@ void* DecodeBuf( void* )
 	    // Decode the event ----
 	    ++ size;
 
-	    cout << "Calling event decode function" << endl;
+	    //	    cout << "Calling event decode function" << endl;
 	    bool b_Decode = EventDecode( iter , size );
 
 	    if( false == b_Decode )
@@ -565,9 +563,11 @@ void* DecodeBuf( void* )
 ****************************************************/
 bool EventDecode( uint* buf, short size)
 {
-    cout << "Event Decode ON" << endl;
-    cout << "BUF = " << buf << endl;
-    cout << "SIZE = " << size << endl;
+    // cout << "Event Decode ON" << endl;
+    // cout << "BUF = " << buf << endl;
+    // cout << "SIZE = " << size << endl;
+
+    cout << "EC = " << EC << endl;
 
     if( size < 9  )
     {
@@ -615,7 +615,7 @@ bool EventDecode( uint* buf, short size)
 	// ?????????????????????????????????????
 	// ?????????????????????????????????????
 	// ?????????????????????????????????????
-	cout << iter << " -> " << hex << (int)(*iter) << endl;
+	//	cout << iter << " -> " << hex << (int)(*iter) << endl;
 
 
 	// Decode the modul header ------
@@ -637,10 +637,13 @@ bool EventDecode( uint* buf, short size)
 	    if( _MarkHeader830 != mark )
 	    {
 		// Check event header mark failed
-		logFile << ">> (W) On Event Number ( "
-			<< dataReg.EventCounter
-			<< " ). Check event header mark Error. "
-			<< endl;
+		// logFile << ">> (W) On Event Number ( "
+		// 	<< dataReg.EventCounter
+		// 	<< " ). Check event header mark Error. "
+		// 	<< endl;
+
+		++ iter;
+		continue;
 
 		return false;
 	    }
@@ -660,10 +663,13 @@ bool EventDecode( uint* buf, short size)
 	    if( _MarkHeader != mark )
 	    {
 		// Check event header mark failed
-		logFile << ">> (W) On Event Number ( "
-			<< dataReg.EventCounter
-			<< " ). Check event header mark Error. " 
-			<< endl;
+		// logFile << ">> (W) On Event Number ( "
+		// 	<< dataReg.EventCounter
+		// 	<< " ). Check event header mark Error. " 
+		// 	<< endl;
+
+		++ iter;
+		continue;
 
 		return false;
 	    }
@@ -676,19 +682,17 @@ bool EventDecode( uint* buf, short size)
 
 
 
-	// ?????????????????????????????????????
-	// ?????????????????????????????????????
-	// ?????????????????????????????????????
-	cout << "------ geo = " << geo << endl;
-	cout << "------ chlNum = " << chlNum << endl;
-	cout << "------ mark = " << mark << endl;
-	//	getchar();		
+	// // ?????????????????????????????????????
+	// // ?????????????????????????????????????
+	// // ?????????????????????????????????????
+ 	// cout << "------ geo = " << geo << endl;
+	// cout << "------ chlNum = " << chlNum << endl;
+	// cout << "------ mark = " << mark << endl;
+	// //	getchar();		
 
 
 
-
-
-	// Check gro ------
+	// Check geo ------
 	// if(  )
 	// {
 	//     // Check event header mark failed
@@ -714,66 +718,56 @@ bool EventDecode( uint* buf, short size)
 	
 
 	// >>>> Switch to different modul ==========
+	++ iter ;
+
 	switch( geo )
 	{
 	  case 3 :
-	    iter = 
-	      Decode_v830ac( iter, chlNum, ( dataReg.v830ac_3) );
+	    iter = Decode_v830ac(iter, chlNum, (dataReg.v830ac_3) );
 	    break;
 
 	  case 4 :
-	    iter = 
-	      Decode_v785n( iter, chlNum, ( dataReg.v785n_4) );
+	    iter = Decode_v785n(iter, chlNum, (dataReg.v785n_4) );
 	    break;
 
 	  case 5 : 
-	    iter = 
-	      Decode_v775n( iter, chlNum, ( dataReg.v775n_5) );
+	    iter = Decode_v775n(iter,chlNum, (dataReg.v775n_5) );
 	    break;
 
 	  case 7 : 
-	    iter = 
-	      Decode_v775n( iter, chlNum, ( dataReg.v775n_7) );
+	    iter = Decode_v775n(iter, chlNum, (dataReg.v775n_7) );
 	    break;
 
 	  case 8 : 
-	    iter = 
-	      Decode_v775n( iter, chlNum, ( dataReg.v775n_8) );
+	    iter = Decode_v775n(iter, chlNum, (dataReg.v775n_8) );
 	    break;
 
 	  case 10 : 
-	    iter = 
-	      Decode_v785( iter, chlNum, ( dataReg.v785_10) );
+	    iter = Decode_v785(iter, chlNum, (dataReg.v785_10) );
 	    break;
 
 	  case 12 : 
-	    iter = 
-	      Decode_v792( iter, chlNum, ( dataReg.v792_12) );
+	    iter = Decode_v792(iter, chlNum, (dataReg.v792_12) );
 	    break;
 
 	  case 13 : 
-	    iter = 
-	      Decode_v792( iter, chlNum, ( dataReg.v792_13) );
+	    iter = Decode_v792(iter, chlNum, (dataReg.v792_13) );
 	    break;
 
 	  case 15 : 
-	    iter = 
-	      Decode_v792( iter, chlNum, ( dataReg.v792_15) );
+	    iter = Decode_v792(iter, chlNum, (dataReg.v792_15) );
 	    break;
 
 	  case 16 : 
-	    iter = 
-	      Decode_v792( iter, chlNum, ( dataReg.v792_16) );
+	    iter = Decode_v792(iter, chlNum, (dataReg.v792_16) );
 	    break;
 
 	  case 18 :
-	    iter = 
-	      Decode_v785( iter, chlNum, ( dataReg.v785_18) );
+	    iter = Decode_v785( iter, chlNum, ( dataReg.v785_18) );
 	    break;
 
 	  case 19 :
-	    iter = 
-	      Decode_v785( iter, chlNum, ( dataReg.v785_19) );
+	    iter = Decode_v785( iter, chlNum, ( dataReg.v785_19) );
 	    break;
 
 	  default: break;
@@ -781,8 +775,8 @@ bool EventDecode( uint* buf, short size)
 
     } /* while */
 
-    displayEvent();
-    getchar();    
+    //    displayEvent();
+    //    getchar();    
 
     return true;
 
@@ -806,7 +800,7 @@ uint* Decode_v830ac( uint* iter,short chlNum, int* reg)
 
     // NOTE: There is no a END mark on data of v830ac
 
-    return (iter+1);
+    return iter;
 }
 
 
@@ -839,7 +833,7 @@ uint* Decode_v792( uint* iter,short chlNum, short* reg)
     
     ++ iter;			// Skip the END mark
 
-    return (iter+1);
+    return iter;
 
 }
 
@@ -873,7 +867,7 @@ uint* Decode_v785n( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return (iter+1);
+    return iter;
 
 }
 
@@ -906,7 +900,7 @@ uint* Decode_v785( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return (iter+1);
+    return iter;
 
 }
 
@@ -946,7 +940,7 @@ uint* Decode_v775n( uint* iter,short chlNum, short* reg)
     } /* i */
     
     ++ iter;			// Skip the END mark
-    return (iter+1);
+    return iter;
 
 }
 
