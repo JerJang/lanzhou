@@ -26,6 +26,9 @@
 using namespace std;
 
 
+// -------------------------------------------------
+//     These macros below this line are very important 
+// keys for decoding, do NOT try to change them.
 
 #define _Event_Separator	0xFFFFFFFF
 #define _Crate_Header		0xFFFF0000
@@ -84,17 +87,34 @@ using namespace std;
 #define _isOverflowMask		0x00002000
 #define _isDataValidMask	0x00004000		
 
+//     These macros above this line are very important 
+// keys for decoding, do NOT try to change them.
+// -------------------------------------------------
 
 
-// ---------------------------------------------------
+
+
+// -------------------------------------------------
+//     You can configuer the program by changing these 
+// macros below this line, BUT make sure that you know 
+// the meaning of them before your configuration.
 
 #define	_DATA_DIRE	"./source/"	// Dir of the data files 
 #define _LOG_FILE	"log"		// The log file
 #define _MAX_FILE_NUM	10e7		// Max of data files 
 
-#define _BUF_SIZE	(5*1024*1024)	// Buffer size ( byte )
-#define _BUF_NUM	2		// buffer number
-#define _THRES_WAIT	100000
+#define _BUF_SIZE	(25*1024*1024)	// Buffer size ( byte )
+#define _BUF_NUM	5		// buffer number
+
+#define _THRES_WAIT	1000
+
+//#define _TEST_				// On Test Modol
+
+
+//     You can configuer the program by changing these 
+// macros above this line, BUT make sure that you know 
+// the meaning of them before your configuration.
+// -------------------------------------------------
 
 
 
@@ -126,6 +146,7 @@ struct sEventDataRegister
     short v785_19[32];
 
 };
+
 
 typedef sEventDataRegister	sEData;
 
@@ -160,15 +181,10 @@ bool isFileEnd;			// Indicate if current file end
 
 // Scan current directory for data files  
 int scanDir( vector<string>* );
-
 int Decode( string fileName );
-
 bool LoadBuf( ifstream* pFile);
-
 void* DecodeBuf( void* );
-
 bool EventDecode( uint* buf, short size);
-
 
 uint* Decode_v830ac( uint* iter,short chlNum, int* reg);
 uint* Decode_v792( uint* iter,short chlNum, short* reg);
@@ -179,8 +195,6 @@ uint* Decode_v775n( uint* iter,short chlNum, short* reg);
 
 void displayEvent();
 void initReg( uint counter );
-
-
 
 
 
@@ -224,8 +238,8 @@ int main(int argc, char *argv[])
     */
 
     logFile << fileNum << " files found. " << endl;
-    cout << fileNum << " files found. "
-	 << "Press Enter to Confirm. " << endl;
+    cout << fileNum << " files found. " << endl
+	 << "Press 'Enter' to Confirm. " ;
     getchar();
 
 
@@ -260,6 +274,7 @@ int main(int argc, char *argv[])
 
 	// Decode current fule -----
 	isFileEnd = false;
+
 	// ///////////////////////////////////////////
 	// Centre Function Call //////////////////////
 	// ///////////////////////////////////////////
@@ -267,10 +282,9 @@ int main(int argc, char *argv[])
 
 	cout << temp << " Events decoded in the file." << endl;
 	logFile << ">> " << temp 
-		<< " Events got in this file." << endl;
+		<< " Events got in this file." << endl << endl;
 
     }
-
 
 
     // Close the log file ==========
@@ -309,7 +323,7 @@ int Decode( string fileName )
 
     if( ! file.is_open() )
     {
-	cout << "File in opening file." << endl;
+	cout << "Failed in opening file." << endl;
 	logFile << ">> (E) Failed in opening file." << endl;
 	return 0;
     }
@@ -340,8 +354,10 @@ int Decode( string fileName )
 	return 0;
     }
     
-    //////////////////////////////////////////////////
-    //////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////
     int ret = pthread_create( &t_decode ,NULL ,DecodeBuf ,NULL );
 
     if( ret!=0 )
@@ -358,14 +374,12 @@ int Decode( string fileName )
 
     while ( 0 != pQue->mNumb )
     {
-    	cout << "z" ;
-    	usleep(_THRES_WAIT);
     	// Wait here when there is still full buffer
+    	usleep(_THRES_WAIT);
+
     } /* while */
 
-    // ???????????????????????????????????????????????????
-    // ???????????????????????????????????????????????????
-    // ???????????????????????????????????????????????????
+
     // while( false == isFileEnd )
     // {
     // 	isFileEnd = LoadBuf( & file );	    
@@ -391,18 +405,20 @@ bool LoadBuf( ifstream* pFile)
 {
     assert( (pQue->mNumb)>= 0 && (pQue->mNumb)<= _BUF_NUM );
 
-    // ?????????????????????????????????????
-    // ?????????????????????????????????????
-    // ?????????????????????????????????????
-    cout << ">";
+    //    cout << ">";
 
 
     // Wait for empty buffer ========== 
     while (  _BUF_NUM == pQue->mNumb )
     {
-	cout << "+" << pQue->mNumb;
-	usleep(_THRES_WAIT);
+#ifdef _TEST_
+	
+	cout << "+" ;
+	
+#endif // _TEST_	
+
 	// Just wait here if all the buffer is full
+	usleep(_THRES_WAIT);
     }
 
 
@@ -437,7 +453,6 @@ bool LoadBuf( ifstream* pFile)
 	// Change the number of full empty ==========
 	++ ( pQue->mNumb );
 
-	cout << "File Remain " << fileRemain << endl;
 	return true;
 
     }
@@ -498,17 +513,17 @@ void* DecodeBuf( void* )
 	// Wait for prepared buffer ========== 
 	while ( 0 == pQue->mNumb )
 	{
+
+#ifdef _TEST_
+
 	    cout << "-" ;
-	    usleep(_THRES_WAIT);
+
+#endif // _TEST_
 
 	    // Just wait here if all the buffer is empty
-	} 
+	    usleep(_THRES_WAIT);
+	}
 
-	//////////////////////////////////////////////////
-	//////////////////////////////////////////////////
-	////// ÏÂÃæÕâ¸ö while ÔÙ¿´Ò»ÏÂ, ÍÆÑÝÒ»ÏÂÑ­»·Çé¿ö ///////
-	//////////////////////////////////////////////////
-	//////////////////////////////////////////////////
 
 	// Decode the buffer for series of events ==========
 	uint* iter = pQue->p_get->p_data;
@@ -551,14 +566,8 @@ void* DecodeBuf( void* )
 
 	// Change the number of full empty ==========
 	-- ( pQue->mNumb );
-	cout << "mNumb = " << pQue->mNumb << endl;
-
-
 
     }
-
-
-
 
     return NULL;
 }
@@ -580,7 +589,11 @@ bool EventDecode( uint* buf, short size)
     // cout << "BUF = " << buf << endl;
     // cout << "SIZE = " << size << endl;
 
-    cout << "EC = " << EC << endl;
+#ifndef _TEST_
+    
+    //    cout << "EC = " << EC << endl;
+    
+#endif // _TEST_
 
     if( size < 9  )
     {
@@ -625,10 +638,7 @@ bool EventDecode( uint* buf, short size)
     // Decode moduls ========
     while ( iter < ( buf + size -1) )
     {
-	// ?????????????????????????????????????
-	// ?????????????????????????????????????
-	// ?????????????????????????????????????
-	//	cout << iter << " -> " << hex << (int)(*iter) << endl;
+	//cout << iter << " -> " << hex << (int)(*iter) << endl;
 
 
 	// Decode the modul header ------
@@ -693,11 +703,6 @@ bool EventDecode( uint* buf, short size)
 	}
 
 
-
-
-	// // ?????????????????????????????????????
-	// // ?????????????????????????????????????
-	// // ?????????????????????????????????????
  	// cout << "------ geo = " << geo << endl;
 	// cout << "------ chlNum = " << chlNum << endl;
 	// cout << "------ mark = " << mark << endl;
@@ -788,11 +793,14 @@ bool EventDecode( uint* buf, short size)
 
     } /* while */
 
-    //    displayEvent();
-    //    getchar();    
+    
+    // // -----------------------------------------------
+    // // Calling this to display the event just decoded
+    // displayEvent();
+    // // -----------------------------------------------
+
 
     return true;
-
 }
 
 
@@ -1024,7 +1032,7 @@ void displayEvent()
     cout << "======> Event: " << dataReg.EventCounter << endl;
 
     // -- 3 ----
-    cout << "Geo          = 3" << endl 
+    cout << "Geo          = 3 \tMod 830AC" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1035,7 +1043,7 @@ void displayEvent()
 
 
     // -- 4 ----
-    cout << "Geo          = 4" << endl 
+    cout << "Geo          = 4 \tMod 785N" << endl 
 	 << "MaxChannel   = 16" << endl
 	 << "chdata[16]   = " ;
     for (int i = 0; i < 16; i++)
@@ -1046,7 +1054,7 @@ void displayEvent()
 
 
     // -- 5 ----
-    cout << "Geo          = 5" << endl 
+    cout << "Geo          = 5 \tMod 775N" << endl 
 	 << "MaxChannel   = 16" << endl
 	 << "chdata[16]   = " ;
     for (int i = 0; i < 16; i++)
@@ -1057,7 +1065,7 @@ void displayEvent()
 
 
     // -- 7 ----
-    cout << "Geo          = 7" << endl 
+    cout << "Geo          = 7 \tMod 775N" << endl 
 	 << "MaxChannel   = 16" << endl
 	 << "chdata[16]   = " ;
     for (int i = 0; i < 16; i++)
@@ -1068,7 +1076,7 @@ void displayEvent()
 
 
     // -- 8 ----
-    cout << "Geo          = 8" << endl 
+    cout << "Geo          = 8 \tMod 775N" << endl 
 	 << "MaxChannel   = 16" << endl
 	 << "chdata[16]   = " ;
     for (int i = 0; i < 16; i++)
@@ -1079,7 +1087,7 @@ void displayEvent()
 
 
     // -- 10 ----
-    cout << "Geo          = 10" << endl 
+    cout << "Geo          = 10\tMod 785" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1090,7 +1098,7 @@ void displayEvent()
 
 
     // -- 12 ----
-    cout << "Geo          = 12" << endl 
+    cout << "Geo          = 12\tMod 792" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1101,7 +1109,7 @@ void displayEvent()
 
 
     // -- 13 ----
-    cout << "Geo          = 13" << endl 
+    cout << "Geo          = 13\tMod 792" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1112,7 +1120,7 @@ void displayEvent()
 
 
     // -- 15 ----
-    cout << "Geo          = 15" << endl 
+    cout << "Geo          = 15\tMod 792" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1123,7 +1131,7 @@ void displayEvent()
 
 
     // -- 16 ----
-    cout << "Geo          = 16" << endl 
+    cout << "Geo          = 16\tMod 792" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1134,7 +1142,7 @@ void displayEvent()
 
 
     // -- 18 ----
-    cout << "Geo          = 18" << endl 
+    cout << "Geo          = 18\tMod 785" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
@@ -1145,7 +1153,7 @@ void displayEvent()
 
 
     // -- 19 ----
-    cout << "Geo          = 19" << endl 
+    cout << "Geo          = 19\tMod 785" << endl 
 	 << "MaxChannel   = 32" << endl
 	 << "chdata[32]   = " ;
     for (int i = 0; i < 32; i++)
